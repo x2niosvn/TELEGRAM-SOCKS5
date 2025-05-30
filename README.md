@@ -29,6 +29,12 @@
 
 ### Chạy script
 
+#V1
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/x2niosvn/TELEGRAM-SOCKS5/main/install.sh)"
 ```
+#V2
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/x2niosvn/TELEGRAM-SOCKS5/main/install_v2.sh)"
+```
+
