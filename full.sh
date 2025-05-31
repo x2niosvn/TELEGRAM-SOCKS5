@@ -207,18 +207,18 @@ run_installation() {
     INTERFACE=$(get_network_interface)
     log "🌐 Giao diện mạng: $INTERFACE"
     
-    # 4. Tối ưu hệ thống
-    log "🔧 Tối ưu hệ thống cho hiệu suất tối đa..."
-    sysctl -w net.core.somaxconn=65535
+    # 4. Tối ưu hệ thống cho 10 người dùng
+    log "🔧 Tối ưu hệ thống cho VPS 1-1, 10 người dùng..."
+    sysctl -w net.core.somaxconn=1024
     sysctl -w net.ipv4.ip_local_port_range="1024 65535"
     sysctl -w net.ipv4.tcp_tw_reuse=1
     sysctl -w net.ipv4.tcp_fin_timeout=15
-    sysctl -w net.core.rmem_max=8388608
-    sysctl -w net.core.wmem_max=8388608
-    echo "root soft nofile 1048576" >> /etc/security/limits.conf
-    echo "root hard nofile 1048576" >> /etc/security/limits.conf
-    echo "* soft nofile 1048576" >> /etc/security/limits.conf
-    echo "* hard nofile 1048576" >> /etc/security/limits.conf
+    sysctl -w net.core.rmem_max=1048576
+    sysctl -w net.core.wmem_max=1048576
+    echo "root soft nofile 32768" >> /etc/security/limits.conf
+    echo "root hard nofile 32768" >> /etc/security/limits.conf
+    echo "* soft nofile 32768" >> /etc/security/limits.conf
+    echo "* hard nofile 32768" >> /etc/security/limits.conf
     
     # 5. Cấu hình proxy
     log "🔧 Cấu hình ${PROXY_TYPE^^}..."
