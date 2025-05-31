@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # X2NIOS Proxy Service Setup - Optimized Version with SOCKS5 and MTProto
-# Version 3.5 - Direct VPS Traffic with Auto Interface Detection
-# Tối ưu cho nhiều thiết bị, giao diện đẹp, hỗ trợ SOCKS5 và MTProto
+# Version 3.6 - Continuous Proxy with Max Performance
+# Tối ưu cho Telegram, chạy liên tục, bỏ giới hạn tài nguyên
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -19,7 +19,7 @@ show_header() {
     echo "║                                                               ║"
     echo "║                 X2NIOS Proxy Service Setup                    ║"
     echo "║                                                               ║"
-    echo "║       ⚡ Direct VPS Traffic - SOCKS5 & MTProto Support ⚡       ║"
+    echo "║        ⚡ Max Performance - SOCKS5 & MTProto Support ⚡         ║"
     echo "║                                                               ║"
     echo "╚═══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -160,25 +160,6 @@ interactive_setup() {
     fi
 }
 
-# Hàm kiểm tra tốc độ mạng
-check_network_speed() {
-    if ! command -v speedtest-cli &> /dev/null; then
-        echo -e "${YELLOW}⚠️ speedtest-cli chưa được cài đặt, đang cài đặt...${NC}"
-        apt install -y speedtest-cli || { echo -e "${RED}❌ Không thể cài đặt speedtest-cli. Kiểm tra kết nối mạng hoặc chạy 'apt update'${NC}"; return 1; }
-    fi
-    speedtest-cli --simple || { echo -e "${RED}❌ Không thể kiểm tra tốc độ mạng. Kiểm tra kết nối Internet bằng 'ping 8.8.8.8'${NC}"; return 1; }
-}
-
-# Hàm lấy thông tin sử dụng mạng
-get_network_usage() {
-    if ! command -v vnstat &> /dev/null; then
-        echo -e "${YELLOW}⚠️ vnstat chưa được cài đặt, đang cài đặt...${NC}"
-        apt install -y vnstat || { echo -e "${RED}❌ Không thể cài đặt vnstat${NC}"; return 1; }
-        vnstat -u -i $(get_network_interface) || { echo -e "${RED}❌ Không thể khởi tạo vnstat${NC}"; return 1; }
-    fi
-    vnstat --oneline || echo -e "${YELLOW}⚠️ Chưa có đủ dữ liệu băng thông. Chờ vài phút và thử lại.${NC}"
-}
-
 # Hàm lấy thông tin kết nối
 get_connections() {
     if [[ "$PROXY_TYPE" == "socks5" ]]; then
@@ -226,7 +207,20 @@ run_installation() {
     INTERFACE=$(get_network_interface)
     log "🌐 Giao diện mạng: $INTERFACE"
     
-    # 4. Cấu hình proxy
+    # 4. Tối ưu hệ thống
+    log "🔧 Tối ưu hệ thống cho hiệu suất tối đa..."
+    sysctl -w net.core.somaxconn=65535
+    sysctl -w net.ipv4.ip_local_port_range="1024 65535"
+    sysctl -w net.ipv4.tcp_tw_reuse=1
+    sysctl -w net.ipv4.tcp_fin_timeout=15
+    sysctl -w net.core.rmem_max=8388608
+    sysctl -w net.core.wmem_max=8388608
+    echo "root soft nofile 1048576" >> /etc/security/limits.conf
+    echo "root hard nofile 1048576" >> /etc/security/limits.conf
+    echo "* soft nofile 1048576" >> /etc/security/limits.conf
+    echo "* hard nofile 1048576" >> /etc/security/limits.conf
+    
+    # 5. Cấu hình proxy
     log "🔧 Cấu hình ${PROXY_TYPE^^}..."
     if [[ "$PROXY_TYPE" == "socks5" ]]; then
         # Cấu hình Dante SOCKS5
@@ -261,13 +255,12 @@ After=network.target
 Type=simple
 ExecStart=/usr/sbin/danted -D
 Restart=always
-RestartSec=3
-LimitNOFILE=65535
+RestartSec=1
+LimitNOFILE=1048576
+LimitNPROC=unlimited
 [Install]
 WantedBy=multi-user.target
 EOF
-        echo "nobody soft nofile 65535" >> /etc/security/limits.conf
-        echo "nobody hard nofile 65535" >> /etc/security/limits.conf
         systemctl daemon-reload
         systemctl enable danted
         systemctl start danted || error "Không thể khởi động Dante. Kiểm tra log: /var/log/danted.log"
@@ -292,8 +285,9 @@ After=network.target
 Type=simple
 ExecStart=/usr/local/bin/mtproto-proxy -u nobody -p ${PROXY_PORT} -H 0.0.0.0 -S ${SECRET} --nat-info 0.0.0.0:${PUBLIC_IP}
 Restart=always
-RestartSec=3
-LimitNOFILE=65535
+RestartSec=1
+LimitNOFILE=1048576
+LimitNPROC=unlimited
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -302,13 +296,13 @@ EOF
         systemctl start mtproto-proxy || error "Không thể khởi động MTProto"
     fi
     
-    # 5. Cấu hình firewall
+    # 6. Cấu hình firewall
     log "🔧 Cấu hình firewall..."
     ufw allow 22/tcp
     ufw allow ${PROXY_PORT}/tcp
     ufw --force enable
     
-    # 6. Tạo script quản lý trạng thái
+    # 7. Tạo script quản lý trạng thái
     log "📝 Tạo script quản lý trạng thái..."
     cat > /usr/local/bin/x2nios_proxy_status << 'EOF'
 #!/bin/bash
@@ -340,19 +334,12 @@ echo -e "${GREEN}🌐 Public IP: ${YELLOW}$PUBLIC_IP${NC}"
 echo -e "${GREEN}=== Kết nối Proxy ==="
 /usr/local/bin/x2nios_proxy_status_internal
 
-# Thông tin tốc độ mạng
-echo -e "${GREEN}=== Tốc độ mạng ==="
-speedtest-cli --simple 2>/dev/null || echo -e "${RED}❌ Không thể kiểm tra tốc độ mạng. Kiểm tra kết nối Internet bằng 'ping 8.8.8.8'${NC}"
-
-# Thông tin sử dụng băng thông
-echo -e "${GREEN}=== Sử dụng băng thông ==="
-vnstat --oneline 2>/dev/null || echo -e "${YELLOW}⚠️ Chưa có đủ dữ liệu băng thông. Chờ vài phút và thử lại.${NC}"
-
 echo ""
 echo -e "${CYAN}🔧 Quản lý:${NC}"
 [ -f /etc/systemd/system/danted.service ] && echo -e "${CYAN}systemctl restart danted${NC} - Restart SOCKS5"
 [ -f /etc/systemd/system/mtproto-proxy.service ] && echo -e "${CYAN}systemctl restart mtproto-proxy${NC} - Restart MTProto"
 echo -e "${CYAN}x2nios_proxy_status${NC} - Kiểm tra trạng thái"
+echo -e "${CYAN}x2nios_proxy_config${NC} - Mở lại menu cấu hình"
 EOF
 
     cat > /usr/local/bin/x2nios_proxy_status_internal << EOF
@@ -368,10 +355,17 @@ else
 fi
 EOF
 
+    # 8. Tạo script gọi lại menu
+    log "📝 Tạo script gọi lại menu cấu hình..."
+    cat > /usr/local/bin/x2nios_proxy_config << EOF
+#!/bin/bash
+bash $0
+EOF
+    chmod +x /usr/local/bin/x2nios_proxy_config
     chmod +x /usr/local/bin/x2nios_proxy_status
     chmod +x /usr/local/bin/x2nios_proxy_status_internal
     
-    # 7. Hiển thị kết quả
+    # 9. Hiển thị kết quả
     PUBLIC_IP=$(curl -s --connect-timeout 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
     
     echo ""
@@ -405,7 +399,8 @@ EOF
     fi
     echo ""
     echo -e "${GREEN}🔧 Quản lý:${NC}"
-    echo -e "${GREEN}x2nios_proxy_status${NC} - Kiểm tra trạng thái và tốc độ mạng"
+    echo -e "${GREEN}x2nios_proxy_status${NC} - Kiểm tra trạng thái"
+    echo -e "${GREEN}x2nios_proxy_config${NC} - Mở lại menu cấu hình"
     if [[ "$PROXY_TYPE" == "socks5" ]]; then
         echo -e "${GREEN}systemctl restart danted${NC} - Restart SOCKS5"
     else
