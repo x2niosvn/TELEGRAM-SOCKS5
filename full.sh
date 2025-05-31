@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # X2NIOS Proxy Service Setup - Optimized Version with SOCKS5 and MTProto
-# Version 3.1 - Direct VPS Traffic with Protocol Selection
+# Version 3.5 - Direct VPS Traffic with Auto Interface Detection
 # Tối ưu cho nhiều thiết bị, giao diện đẹp, hỗ trợ SOCKS5 và MTProto
 
 RED='\033[0;31m'
@@ -17,9 +17,9 @@ show_header() {
     echo -e "${CYAN}"
     echo "╔═══════════════════════════════════════════════════════════════╗"
     echo "║                                                               ║"
-    echo "║    🔥 X2NIOS Proxy Service Setup - Optimized 🔥             ║"
+    echo "║                 X2NIOS Proxy Service Setup                    ║"
     echo "║                                                               ║"
-    echo "║    ⚡ Direct VPS Traffic - SOCKS5 & MTProto Support ⚡      ║"
+    echo "║       ⚡ Direct VPS Traffic - SOCKS5 & MTProto Support ⚡       ║"
     echo "║                                                               ║"
     echo "╚═══════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
@@ -35,10 +35,33 @@ check_root() {
     fi
 }
 
+# Kiểm tra cổng có đang sử dụng không
+check_port() {
+    local port=$1
+    if netstat -tuln | grep -q ":${port}"; then
+        echo -e "${RED}❌ Cổng $port đang được sử dụng!${NC}"
+        echo -e "${YELLOW}💡 Hãy chọn cổng khác hoặc dừng tiến trình bằng lệnh:${NC}"
+        echo -e "${YELLOW}   fuser -k ${port}/tcp${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Tìm giao diện mạng chính
+get_network_interface() {
+    INTERFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -n 1)
+    if [[ -z "$INTERFACE" ]]; then
+        echo -e "${RED}❌ Không tìm thấy giao diện mạng!${NC}"
+        echo -e "${YELLOW}💡 Kiểm tra bằng lệnh: ip link${NC}"
+        exit 1
+    fi
+    echo "$INTERFACE"
+}
+
 # Thu thập thông tin với validation
 collect_user_input() {
     echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                    CẤU HÌNH X2NIOS PROXY                     ║${NC}"
+    echo -e "${BLUE}║                    CẤU HÌNH X2NIOS PROXY                      ║${NC}"
     echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
@@ -64,15 +87,18 @@ collect_user_input() {
         read -p "$(echo -e "${GREEN}🔌 Port cho proxy ${YELLOW}[1080]${NC}: ")" PROXY_PORT
         PROXY_PORT=${PROXY_PORT:-1080}
         if [[ "$PROXY_PORT" =~ ^[0-9]+$ ]] && [ "$PROXY_PORT" -ge 1 ] && [ "$PROXY_PORT" -le 65535 ]; then
-            break
+            if check_port "$PROXY_PORT"; then
+                break
+            fi
+        else
+            echo -e "${RED}❌ Port không hợp lệ! Phải là số từ 1-65535.${NC}"
         fi
-        echo -e "${RED}❌ Port không hợp lệ! Phải là số từ 1-65535.${NC}"
     done
     
     # Xác nhận
     echo ""
     echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                     XÁC NHẬN CẤU HÌNH                        ║${NC}"
+    echo -e "${CYAN}║                     XÁC NHẬN CẤU HÌNH                         ║${NC}"
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo -e "${GREEN}📊 Username: ${YELLOW}$PROXY_USER${NC}"
     echo -e "${GREEN}📊 Password/Secret: ${YELLOW}$(echo $PROXY_PASS | sed 's/./*/g')${NC}"
@@ -93,7 +119,7 @@ collect_user_input() {
 # Menu chính
 show_menu() {
     echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║                  CHỌN PHƯƠNG THỨC CÀI ĐẶT                    ║${NC}"
+    echo -e "${GREEN}║                  CHỌN PHƯƠNG THỨC CÀI ĐẶT                     ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "${CYAN}1.${NC} ${GREEN}📝 SOCKS5 Setup${NC} - Cài đặt SOCKS5 proxy (khuyến nghị)"
@@ -137,17 +163,20 @@ interactive_setup() {
 # Hàm kiểm tra tốc độ mạng
 check_network_speed() {
     if ! command -v speedtest-cli &> /dev/null; then
-        apt install -y speedtest-cli || { echo "❌ Không thể cài đặt speedtest-cli"; return 1; }
+        echo -e "${YELLOW}⚠️ speedtest-cli chưa được cài đặt, đang cài đặt...${NC}"
+        apt install -y speedtest-cli || { echo -e "${RED}❌ Không thể cài đặt speedtest-cli. Kiểm tra kết nối mạng hoặc chạy 'apt update'${NC}"; return 1; }
     fi
-    speedtest-cli --simple
+    speedtest-cli --simple || { echo -e "${RED}❌ Không thể kiểm tra tốc độ mạng. Kiểm tra kết nối Internet bằng 'ping 8.8.8.8'${NC}"; return 1; }
 }
 
 # Hàm lấy thông tin sử dụng mạng
 get_network_usage() {
     if ! command -v vnstat &> /dev/null; then
-        apt install -y vnstat || { echo "❌ Không thể cài đặt vnstat"; return 1; }
+        echo -e "${YELLOW}⚠️ vnstat chưa được cài đặt, đang cài đặt...${NC}"
+        apt install -y vnstat || { echo -e "${RED}❌ Không thể cài đặt vnstat${NC}"; return 1; }
+        vnstat -u -i $(get_network_interface) || { echo -e "${RED}❌ Không thể khởi tạo vnstat${NC}"; return 1; }
     fi
-    vnstat --oneline
+    vnstat --oneline || echo -e "${YELLOW}⚠️ Chưa có đủ dữ liệu băng thông. Chờ vài phút và thử lại.${NC}"
 }
 
 # Hàm lấy thông tin kết nối
@@ -179,7 +208,7 @@ run_installation() {
     # 1. Cập nhật hệ thống và cài đặt packages
     log "📦 Cập nhật hệ thống và cài đặt packages..."
     apt update && apt upgrade -y
-    apt install -y net-tools ufw speedtest-cli vnstat curl --fix-missing || error "Không thể cài đặt packages"
+    apt install -y net-tools ufw curl || error "Không thể cài đặt packages cơ bản"
     
     if [[ "$PROXY_TYPE" == "socks5" ]]; then
         apt install -y dante-server || error "Không thể cài đặt Dante"
@@ -193,14 +222,18 @@ run_installation() {
     systemctl stop danted mtproto-proxy 2>/dev/null || true
     systemctl disable danted mtproto-proxy 2>/dev/null || true
     
-    # 3. Cấu hình proxy
+    # 3. Lấy giao diện mạng
+    INTERFACE=$(get_network_interface)
+    log "🌐 Giao diện mạng: $INTERFACE"
+    
+    # 4. Cấu hình proxy
     log "🔧 Cấu hình ${PROXY_TYPE^^}..."
     if [[ "$PROXY_TYPE" == "socks5" ]]; then
         # Cấu hình Dante SOCKS5
         cat > /etc/danted.conf << EOF
 logoutput: /var/log/danted.log
 internal: 0.0.0.0 port = ${PROXY_PORT}
-external: eth0
+external: ${INTERFACE}
 method: username
 user.privileged: root
 user.unprivileged: nobody
@@ -237,7 +270,7 @@ EOF
         echo "nobody hard nofile 65535" >> /etc/security/limits.conf
         systemctl daemon-reload
         systemctl enable danted
-        systemctl start danted || error "Không thể khởi động Dante"
+        systemctl start danted || error "Không thể khởi động Dante. Kiểm tra log: /var/log/danted.log"
     else
         # Cấu hình MTProto
         log "📥 Cài đặt mtproto-proxy..."
@@ -269,13 +302,13 @@ EOF
         systemctl start mtproto-proxy || error "Không thể khởi động MTProto"
     fi
     
-    # 4. Cấu hình firewall
+    # 5. Cấu hình firewall
     log "🔧 Cấu hình firewall..."
     ufw allow 22/tcp
     ufw allow ${PROXY_PORT}/tcp
     ufw --force enable
     
-    # 5. Tạo script quản lý trạng thái
+    # 6. Tạo script quản lý trạng thái
     log "📝 Tạo script quản lý trạng thái..."
     cat > /usr/local/bin/x2nios_proxy_status << 'EOF'
 #!/bin/bash
@@ -293,7 +326,7 @@ echo ""
 # Kiểm tra trạng thái service
 echo -e "${GREEN}=== Trạng thái dịch vụ ==="
 if [ -f /etc/systemd/system/danted.service ]; then
-    systemctl is-active danted &>/dev/null && echo -e "${GREEN}✅ SOCKS5: Running${NC}" || echo -e "${RED}❌ SOCKS5: Stopped${NC}"
+    systemctl is-active danted &>/dev/null && echo -e "${GREEN}✅ SOCKS5: Running${NC}" || { echo -e "${RED}❌ SOCKS5: Stopped${NC}"; echo -e "${YELLOW}💡 Kiểm tra log: cat /var/log/danted.log${NC}"; echo -e "${YELLOW}💡 Thử khởi động lại: systemctl restart danted${NC}"; }
 fi
 if [ -f /etc/systemd/system/mtproto-proxy.service ]; then
     systemctl is-active mtproto-proxy &>/dev/null && echo -e "${GREEN}✅ MTProto: Running${NC}" || echo -e "${RED}❌ MTProto: Stopped${NC}"
@@ -309,11 +342,11 @@ echo -e "${GREEN}=== Kết nối Proxy ==="
 
 # Thông tin tốc độ mạng
 echo -e "${GREEN}=== Tốc độ mạng ==="
-speedtest-cli --simple 2>/dev/null || echo -e "${RED}❌ Không thể kiểm tra tốc độ mạng${NC}"
+speedtest-cli --simple 2>/dev/null || echo -e "${RED}❌ Không thể kiểm tra tốc độ mạng. Kiểm tra kết nối Internet bằng 'ping 8.8.8.8'${NC}"
 
 # Thông tin sử dụng băng thông
 echo -e "${GREEN}=== Sử dụng băng thông ==="
-vnstat --oneline 2>/dev/null || echo -e "${RED}❌ Không thể lấy thông tin băng thông${NC}"
+vnstat --oneline 2>/dev/null || echo -e "${YELLOW}⚠️ Chưa có đủ dữ liệu băng thông. Chờ vài phút và thử lại.${NC}"
 
 echo ""
 echo -e "${CYAN}🔧 Quản lý:${NC}"
@@ -338,14 +371,14 @@ EOF
     chmod +x /usr/local/bin/x2nios_proxy_status
     chmod +x /usr/local/bin/x2nios_proxy_status_internal
     
-    # 6. Hiển thị kết quả
+    # 7. Hiển thị kết quả
     PUBLIC_IP=$(curl -s --connect-timeout 5 ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
     
     echo ""
     log "=== ✅ CÀI ĐẶT HOÀN TẤT ==="
     echo ""
     echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                     THÔNG TIN X2NIOS PROXY                   ║${NC}"
+    echo -e "${CYAN}║                     THÔNG TIN X2NIOS PROXY                    ║${NC}"
     echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo -e "${GREEN}🌐 Host: ${YELLOW}$PUBLIC_IP${NC}"
     echo -e "${GREEN}🔌 Port: ${YELLOW}$PROXY_PORT${NC}"
