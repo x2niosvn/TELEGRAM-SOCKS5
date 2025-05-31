@@ -35,6 +35,9 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/x2niosvn/TELEGRAM-SOCKS5
 ```
 #V2
 ```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/x2niosvn/TELEGRAM-SOCKS5/main/socks5_status.sh)"
+```
+#V2
+```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/x2niosvn/TELEGRAM-SOCKS5/main/install_v2.sh)"
 ```
-
