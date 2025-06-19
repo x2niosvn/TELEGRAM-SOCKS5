@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # X2NIOS SOCKS5 SERVICE Setup - All-in-One Script
-# Version 2.0 - Single File Solution
+# Version 2.2 - Single File Solution with Auto Generate Option
 # Chỉ cần 1 file duy nhất để chạy trên VPS
 
 RED='\033[0;31m'
@@ -10,6 +10,22 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
+
+# Hàm tạo random string
+generate_random_string() {
+    local length=$1
+    cat /dev/urandom | tr -dc 'a-z0-9' | head -c $length
+}
+
+# Hàm tạo random password 9 số
+generate_random_password() {
+    cat /dev/urandom | tr -dc '0-9' | head -c 9
+}
+
+# Hàm tạo random port trong dải hợp lệ (1024-65535)
+generate_random_port() {
+    shuf -i 1024-65535 -n 1
+}
 
 # Header đẹp
 show_header() {
@@ -35,70 +51,26 @@ check_root() {
     fi
 }
 
-# Thu thập thông tin với validation tốt
-collect_user_input() {
-    echo -e "${BLUE}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║                    CẤU HÌNH X2NIOS SOCKS5                     ║${NC}"
-    echo -e "${BLUE}╚═══════════════════════════════════════════════════════════════╝${NC}"
+# Auto Generate Setup
+auto_generate_setup() {
+    show_header
+    echo -e "${YELLOW}⚡ Auto Generate Setup - Tự động tạo thông tin${NC}"
     echo ""
     
-    # Username
-    while true; do
-        read -p "$(echo -e "${GREEN}👤 Username cho X2NIOS SOCKS5 ${YELLOW}[x2nios]${NC}: ")" SOCKS_USER
-        SOCKS_USER=${SOCKS_USER:-x2nios}
-        [[ ${#SOCKS_USER} -ge 3 ]] && break
-        echo -e "${RED}❌ Username phải có ít nhất 3 ký tự!${NC}"
-    done
+    SOCKS_USER="x2nios$(generate_random_string 6)"
+    SOCKS_PASS=$(generate_random_password)
+    SOCKS_PORT=$(generate_random_port)
     
-    # Password
-    while true; do
-        read -s -p "$(echo -e "${GREEN}🔒 Password cho X2NIOS SOCKS5 ${YELLOW}[123456789]${NC}: ")" SOCKS_PASS
-        echo ""
-        SOCKS_PASS=${SOCKS_PASS:-123456789}
-        [[ ${#SOCKS_PASS} -ge 6 ]] && break
-        echo -e "${RED}❌ Password phải có ít nhất 6 ký tự!${NC}"
-    done
-    
-    # Port
-    while true; do
-        read -p "$(echo -e "${GREEN}🔌 Port cho X2NIOS SOCKS5 ${YELLOW}[1080]${NC}: ")" SOCKS_PORT
-        SOCKS_PORT=${SOCKS_PORT:-1080}
-        if [[ "$SOCKS_PORT" =~ ^[0-9]+$ ]] && [ "$SOCKS_PORT" -ge 1 ] && [ "$SOCKS_PORT" -le 65535 ]; then
-            break
-        fi
-        echo -e "${RED}❌ Port không hợp lệ! Phải là số từ 1-65535.${NC}"
-    done
-    
-    # Xác nhận
-    echo ""
-    echo -e "${CYAN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║                     XÁC NHẬN CẤU HÌNH                        ║${NC}"
-    echo -e "${CYAN}╚═══════════════════════════════════════════════════════════════╝${NC}"
-    echo -e "${GREEN}📊 Username: ${YELLOW}$SOCKS_USER${NC}"
-    echo -e "${GREEN}📊 Password: ${YELLOW}$(echo $SOCKS_PASS | sed 's/./*/g')${NC}"
-    echo -e "${GREEN}📊 Port: ${YELLOW}$SOCKS_PORT${NC}"
+    echo -e "${GREEN}👤 Username: ${YELLOW}$SOCKS_USER${NC}"
+    echo -e "${GREEN}🔒 Password: ${YELLOW}$SOCKS_PASS${NC}"
+    echo -e "${GREEN}🔌 Port: ${YELLOW}$SOCKS_PORT${NC}"
     echo ""
     
-    while true; do
-        read -p "$(echo -e "${GREEN}✅ Xác nhận cấu hình? ${YELLOW}(y/N)${NC}: ")" confirm
-        case $confirm in
-            [yY][eE][sS]|[yY]) export SOCKS_USER SOCKS_PASS SOCKS_PORT; return 0;;
-            [nN][oO]|[nN]|"") return 1;;
-            *) echo -e "${RED}❌ Vui lòng nhập y hoặc n${NC}";;
-        esac
-    done
-}
-
-# Menu chính
-show_menu() {
-    echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║                  CHỌN PHƯƠNG THỨC CÀI ĐẶT                    ║${NC}"
-    echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo -e "${CYAN}1.${NC} ${GREEN}📝 Interactive Setup${NC} - Nhập thông tin chi tiết (khuyến nghị)"
-    echo -e "${CYAN}2.${NC} ${YELLOW}⚡ Quick Setup${NC} - Cấu hình mặc định nhanh"
-    echo -e "${CYAN}3.${NC} ${RED}❌ Thoát${NC}"
-    echo ""
+    read -p "$(echo -e "${GREEN}🚀 Xác nhận? ${YELLOW}(y/N)${NC}: ")" confirm
+    if [[ "$confirm" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+        export SOCKS_USER SOCKS_PASS SOCKS_PORT
+        run_installation
+    fi
 }
 
 # Quick Setup
@@ -118,20 +90,19 @@ quick_setup() {
     fi
 }
 
-# Interactive Setup
-interactive_setup() {
-    show_header
-    echo -e "${BLUE}📝 Interactive Setup - Cấu hình chi tiết${NC}"
+# Menu chính
+show_menu() {
+    echo -e "${GREEN}╔═══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${GREEN}║                  CHỌN PHƯƠNG THỨC CÀI ĐẶT                    ║${NC}"
+    echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
-    
-    if collect_user_input; then
-        run_installation
-    else
-        echo -e "${YELLOW}⚠️ Hủy bỏ cài đặt.${NC}"
-    fi
+    echo -e "${CYAN}1.${NC} ${YELLOW}⚡ Auto Generate Setup${NC} - Tự động tạo username/password/port"
+    echo -e "${CYAN}2.${NC} ${YELLOW}⚡ Quick Setup${NC} - Cấu hình mặc định nhanh"
+    echo -e "${CYAN}3.${NC} ${RED}❌ Thoát${NC}"
+    echo ""
 }
 
-# Chạy cài đặt - TẤT CẢ CODE CÀI ĐẶT ĐƯỢC TÍCH HỢP VÀO ĐÂY
+# Chạy cài đặt
 run_installation() {
     echo -e "${GREEN}🚀 Bắt đầu cài đặt X2NIOS SOCKS5 SERVICE...${NC}"
     echo ""
@@ -157,7 +128,7 @@ deb http://archive.ubuntu.com/ubuntu/ $UBUNTU_VERSION-security main restricted u
 deb http://archive.ubuntu.com/ubuntu/ $UBUNTU_VERSION-updates main restricted universe multiverse
 EOF
     
-    apt update || { sed -i 's/archive.ubuntu.com/vn.archive.ubuntu.com/g' /etc/apt/sources.list; apt update; }
+    apt update -y || { sed -i 's/archive.ubuntu.com/vn.archive.ubuntu.com/g' /etc/apt/sources.list; apt update -y; }
     
     # 2. Cài đặt packages
     log "📦 Cài đặt packages..."
@@ -331,7 +302,7 @@ main() {
         echo ""
         
         case $choice in
-            1) interactive_setup; break;;
+            1) auto_generate_setup; break;;
             2) quick_setup; break;;
             3) echo -e "${GREEN}👋 Tạm biệt!${NC}"; exit 0;;
             *) echo -e "${RED}❌ Lựa chọn không hợp lệ!${NC}"; sleep 1;;
